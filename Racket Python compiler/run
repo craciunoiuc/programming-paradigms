@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+import argparse
+import subprocess
+import os
+
+def str2bool(v):
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
+def create_cache_file(module, cached_file_path):
+    code = module.main.__code__
+    output = (str(code.co_varnames) + '\n')
+    output += (str(code.co_consts) + '\n' )
+    output += (str(code.co_names) + '\n' )
+    output += (str(list(code.co_code)).replace('[', '(').replace(']', ')') + '\n')
+    f = open(cached_file_path, 'w+')
+    f.write(output.replace(', ', ' ')
+        .replace(',', ' ')
+        .replace(' )', ')')
+        .replace('\'', '"')
+        .replace('None', '0')
+    )
+    f.close()
+
+def run(cached_file_path):
+    subprocess.run(['racket', "byterun.rkt", cached_file_path])
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Run a given pypp bytecode with byterun.rkt.')
+    parser.add_argument('file', metavar='file', type=str,
+                        help='file path')
+    parser.add_argument('--clear-cache', type=str2bool, nargs='?', const=True, default=False,
+                        help='clear the cached bytecode')
+
+    args = parser.parse_args()
+    file_path = os.path.join(os.getcwd(), args.file)
+    cached_file = args.file.replace('.py', '.pyppc')
+    cached_file_path = os.path.join(os.getcwd(), cached_file)
+
+    if not os.path.exists(file_path):
+        parser.error("The file %s does not exist!" % args.file)
+
+    if args.clear_cache:
+        print("Removing cache...")
+        if os.path.exists(cached_file_path):
+            os.remove(cached_file_path)
+
+    if not os.path.exists(cached_file_path):
+        print("Creating python bytecode...")
+        module_path = args.file.replace('/', '.').replace('\\', '.').replace('.py', '')
+        module = __import__(module_path)
+        for m in module_path.split('.')[1:]:
+            module = module.__dict__[m]
+        create_cache_file(module, cached_file_path)
+
+    run(cached_file_path)
+
